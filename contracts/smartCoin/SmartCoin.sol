@@ -227,7 +227,7 @@ contract SmartCoin is Whitelist, ERC20, ISmartCoin {
             "SmartCoin: Insufficient balance"
         );
         unchecked {
-            _engagedAmount[_from] += _value; // Overflow not possible, engagedAmount amount <= balance
+            _engagedAmount[_from] += _value; // No overflow since balance >= engagedAmount
         }
         bytes32 transferHash = EncodingUtils.encodeRequest(
             _from,
@@ -254,7 +254,7 @@ contract SmartCoin is Whitelist, ERC20, ISmartCoin {
         returns (bool)
     {
         require(
-            _availableBalance(_from) >= _amount, // _amount should not exceed balance minus engagedAmount amount
+            _availableBalance(_from) >= _amount,
             "SmartCoin: transfer amount exceeds balance"
         );
         super._transfer(_from, registrar, _amount);
@@ -268,7 +268,7 @@ contract SmartCoin is Whitelist, ERC20, ISmartCoin {
         returns (bool)
     {
         require(
-            _availableBalance(registrar) >= _amount, // _amount should not exceed balance minus engagedAmount amount
+            _availableBalance(registrar) >= _amount,
             "SmartCoin: burn amount exceeds balance"
         );
         super._burn(registrar, _amount);
@@ -292,12 +292,12 @@ contract SmartCoin is Whitelist, ERC20, ISmartCoin {
         override(ERC20, ISmartCoin)
         returns (uint256)
     {
-        return _availableBalance(_addr); // Overflow not possible: balance >= engagedAmount amount.
+        return _availableBalance(_addr);
     }
 
     function _availableBalance(address _addr) internal view returns (uint256) {
         unchecked {
-            return super.balanceOf(_addr) - _engagedAmount[_addr];
+            return super.balanceOf(_addr) - _engagedAmount[_addr]; // No overflow since balance >= engagedAmount
         }
     }
 
