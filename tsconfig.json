@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "declaration": false,
+    "noImplicitAny": false,
+    "removeComments": true,
+    "noLib": false,
+    "allowSyntheticDefaultImports": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "target": "es6",
+    "sourceMap": true,
+    "allowJs": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "resolveJsonModule": true,
+    "typeRoots": [
+      "node_modules/@types",
+      "dist/types"
+    ],
+    "types": [
+      "node",
+      "mocha",
+      "chai",
+      "truffle-typings"
+    ],
+    "strictNullChecks": true,
+    "preserveSymlinks": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "contracts",
+    "build",
+    "migrations",
+    "test"
+  ]
+}
