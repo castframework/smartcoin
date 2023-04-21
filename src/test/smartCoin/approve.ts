@@ -31,6 +31,7 @@ contract('SmartCoin', (accounts) => {
   const amount = 5;
   const fromRegistrar = { from: registrar };
   const fromHolder1 = { from: holder1 };
+  const fromHolder2 = { from: holder2 };
   context('Approve adapter', async function () {
     beforeEach(async () => {
       smartCoin = await SmartCoin.new(registrar);
@@ -266,6 +267,42 @@ contract('SmartCoin', (accounts) => {
           from: holder2,
         }),
       ).to.be.rejectedWith('ERC20: insufficient allowance');
+    });
+    it('should have correct allowance upon rejection of transfer', async function () {
+      // Approve the initial request for allowance
+      const rslt = await smartCoin.approve(holder2, amount, fromHolder1);
+      const index = assertEvent(rslt, 'ApproveRequested');
+      const approveHash = rslt.logs[index].args['approveHash'];
+      await smartCoin.validateApprove(approveHash, fromRegistrar);
+
+      // Check allowance
+      const allowance = await smartCoin.allowance(holder1, holder2);
+      assert.equal(allowance.toNumber(), amount, 'Invalid allowance amount');
+
+      const result2 = await smartCoin.transferFrom(holder1, holder3, 2, fromHolder2);
+      const index2 = assertEvent(result2, 'TransferRequested');
+      const transferHash = result2.logs[index2].args['transferHash'];
+
+      await smartCoin.rejectTransfer(transferHash, fromRegistrar);
+
+      // Check allowance
+      const newAllowance = await smartCoin.allowance(holder1, holder2);
+      assert.equal(newAllowance.toNumber(), amount, 'Failed to rollback allowance amount');
+    });
+    it('should not cause an overflow in reject transfer', async function () {
+      // Approve the initial request for allowance
+      const result = await smartCoin.approve(holder2, ethers.constants.MaxUint256.sub(1).toString(), fromHolder1);
+      const index = assertEvent(result, 'ApproveRequested');
+      const approveHash = result.logs[index].args['approveHash'];
+      await smartCoin.validateApprove(approveHash, fromRegistrar);
+
+      const result2 = await smartCoin.transferFrom(holder1, holder3, 2, fromHolder2);
+      const index2 = assertEvent(result2, 'TransferRequested');
+      const transferHash = result2.logs[index2].args['transferHash'];
+
+      const result3 = await smartCoin.rejectTransfer(transferHash, fromRegistrar);
+
+      assertEvent(result3, 'TransferRejected');
     });
   });
 });

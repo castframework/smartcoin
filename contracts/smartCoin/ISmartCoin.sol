@@ -75,7 +75,7 @@ interface ISmartCoin {
 
     function rejectApprove(bytes32 approveHash) external returns (bool);
 
-    /* start performed by openzepplin ERC20 
+    /* start performed by openzeppelin ERC20 
      * function allowance(address owner, address spender)                            
      *        external                                                               
      *        view                                                                   
@@ -88,5 +88,5 @@ interface ISmartCoin {
      *   address indexed spender,                                                    
      *   uint256 value                                                               
      * );                                                                            
-    end performed by openzepplin ERC20 */
+    end performed by openzeppelin ERC20 */
 }

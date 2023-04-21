@@ -2,7 +2,7 @@ pragma solidity 0.8.17;
 
 import "./Whitelist.sol";
 import "./ISmartCoin.sol";
-import "../openzepplin/ERC20.sol";
+import "../openzeppelin/ERC20.sol";
 import "../libraries/EncodingUtils.sol";
 
 contract SmartCoin is Whitelist, ERC20, ISmartCoin {
@@ -15,7 +15,7 @@ contract SmartCoin is Whitelist, ERC20, ISmartCoin {
     mapping(address => uint256) private _engagedAmount; // _engagedAmount amount in transfer or approve
 
     constructor(address registrar)
-        ERC20("EUR Coinvertible", "EURCV")
+        ERC20("SmartCoin", "SMC")
         Whitelist(registrar)
     {}
 
@@ -77,12 +77,12 @@ contract SmartCoin is Whitelist, ERC20, ISmartCoin {
 
             uint256 allowance = allowance(
                 transferRequest.from,
-                transferRequest.to
+                transferRequest.spender
             );
             if (allowance != type(uint256).max) {
                 _approve(
                     transferRequest.from,
-                    transferRequest.to,
+                    transferRequest.spender,
                     allowance + transferRequest.value
                 );
             }
