@@ -1,13 +1,14 @@
-import { assertEvent, assertEventArgs } from '../utils/events';
-import chai, { expect } from 'chai';
-import chaiAsPromised from 'chai-as-promised';
-import { SmartCoinInstance } from '../../../dist/types';
-import { AllEvents } from '../../../dist/types/SmartCoin';
-import { ethers } from 'ethers';
-const SmartCoin = artifacts.require('SmartCoin');
-const EMPTY_VALUE = 0;
+import { SmartCoin } from '../../../dist/types';
+import { getOperatorSigners } from '../utils/signers';
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
+import { deploySmartCoinFixture } from '../utils/builders';
+import { assert, expect } from 'chai';
+import { MAX_UINT, ZERO_ADDRESS } from '../utils/contants';
+import { Signer } from 'ethers';
+import { Sign, sign } from 'crypto';
+
 export async function assertEngagedAmount(
-  smartCoin: SmartCoinInstance,
+  smartCoin: SmartCoin,
   owner: string,
 ): Promise<void> {
   const engagedAmountAmount = (await smartCoin.engagedAmount(owner)).toNumber();
@@ -17,292 +18,404 @@ export async function assertEngagedAmount(
     'Should not engage an amount in the approve',
   );
 }
-chai.use(chaiAsPromised);
-contract('SmartCoin', (accounts) => {
-  let smartCoin: SmartCoinInstance;
 
-  const registrar = accounts[1];
-  const holder1 = accounts[2];
-  const holder2 = accounts[3];
-  const holder3 = accounts[4];
-  const unwhitelistedAccount = accounts[7];
+context('SmartCoin', () => {
+  let smartCoin: SmartCoin;
+  let signers: {
+    registrar: Signer;
+    issuer: Signer;
+    investor4: Signer;
+    investor1: Signer;
+    investor2: Signer;
+    investor3: Signer;
+    settler: Signer;
+    operations: Signer;
+    technical: Signer;
+  };
 
-  const amountToMint = 10;
+  let registrarAddress: string;
+  let investor1Address: string;
+  let investor2Address: string;
+  let investor3Address: string;
+  let investor4Address: string;
+
+  let operationsAddress: string;
+
+  const mintingAmount = 10;
   const amount = 5;
-  const fromRegistrar = { from: registrar };
-  const fromHolder1 = { from: holder1 };
-  const fromHolder2 = { from: holder2 };
-  context('Approve adapter', async function () {
-    beforeEach(async () => {
-      smartCoin = await SmartCoin.new(registrar);
-      await smartCoin.addAddressToWhitelist(holder1, fromRegistrar);
-      await smartCoin.addAddressToWhitelist(holder2, fromRegistrar);
-      await smartCoin.addAddressToWhitelist(holder3, fromRegistrar);
 
-      await smartCoin.mint(holder1, amountToMint, fromRegistrar);
+  context('SmartCoin: Approve', async function () {
+    beforeEach(async () => {
+      smartCoin = await loadFixture(deploySmartCoinFixture);
+      signers = await getOperatorSigners();
+
+      registrarAddress = await signers.registrar.getAddress();
+      investor1Address = await signers.investor1.getAddress();
+      investor2Address = await signers.investor2.getAddress();
+      investor3Address = await signers.investor3.getAddress();
+      investor4Address = await signers.investor4.getAddress();
+      operationsAddress = await signers.operations.getAddress();
+
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
     });
-    it('should create an approve request successfully', async function () {
-      const rslt: Truffle.TransactionResponse<any> = await smartCoin.approve(
-        holder2,
-        amount,
-        fromHolder1,
-      );
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      expect(approveHash).to.be.not.empty;
-      assertEventArgs(rslt, index, 'from', holder1);
-      assertEventArgs(rslt, index, 'to', holder2);
-      assertEventArgs(rslt, index, 'value', amount);
+
+    it('should emit and approval event', async function () {
+      const approveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
+
+      await expect(approveTransaction)
+        .to.emit(smartCoin, 'Approval')
+        .withArgs(investor1Address, investor2Address, amount);
     });
-    it('should not engage the amount after approve creation', async function () {
-      await smartCoin.approve(holder2, amount, fromHolder1);
-      assert.equal(Number(await smartCoin.balanceOf(holder1)), amountToMint);
-      assert.equal(Number(await smartCoin.engagedAmount(holder1)), 0);
+
+    it('should revert approve to zero address', async () => {
+      await expect(
+        smartCoin.connect(signers.investor1).approve(ZERO_ADDRESS, amount),
+      ).to.be.revertedWith('ERC20: approve to the zero address');
     });
+
     it('should overwrite the amount when called twice(smaller amount)', async function () {
       const newApproveAmount = 3;
-      let rslt: Truffle.TransactionResponse<any> = await smartCoin.approve(
-        holder2,
-        amount,
-        fromHolder1,
-      );
-      let index = assertEvent(rslt, 'ApproveRequested');
-      let approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
-      rslt = await smartCoin.approve(holder2, newApproveAmount, fromHolder1);
-      index = assertEvent(rslt, 'ApproveRequested');
-      approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
+      const firstApproveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
+
+      await expect(firstApproveTransaction).to.emit(smartCoin, 'Approval');
+
+      const secondApproveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, newApproveAmount);
+
+      await expect(secondApproveTransaction).to.emit(smartCoin, 'Approval');
+
       assert.equal(
-        Number(await smartCoin.allowance(holder1, holder2)),
+        Number(await smartCoin.allowance(investor1Address, investor2Address)),
         newApproveAmount,
       );
-      await assertEngagedAmount(smartCoin, holder1);
+
+      await assertEngagedAmount(smartCoin, investor1Address);
     });
-    it('should fail to validate approve for unwhitelisted address(from)', async function () {
-      const rslt: Truffle.TransactionResponse<any> = await smartCoin.approve(
-        holder2,
-        amount,
-        fromHolder1,
+
+    it('should fail to approve for frozen address(owner)', async function () {
+      await smartCoin
+        .connect(signers.registrar)
+        .freeze([investor1Address]);
+
+      await expect(
+        smartCoin.connect(signers.investor1).approve(investor2Address, amount),
+      )
+        .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+        .withArgs(investor1Address);
+    });
+
+    it('should fail to approve for blacklisted address(spender)', async function () {
+      const freezeTransaction = await smartCoin
+        .connect(signers.registrar)
+        .freeze([investor2Address]);
+      await expect(freezeTransaction).to.emit(
+        smartCoin,
+        'AddressesFrozen',
       );
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.removeAddressFromWhitelist(holder1, fromRegistrar);
       await expect(
-        smartCoin.validateApprove(approveHash, fromRegistrar),
-      ).to.be.rejectedWith('Whitelist: address must be whitelisted');
+        smartCoin.connect(signers.investor1).approve(investor2Address, amount),
+      )
+        .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+        .withArgs(investor2Address);
     });
-    it('should fail to validate approve for unwhitelisted address(to)', async function () {
-      const rslt: Truffle.TransactionResponse<any> = await smartCoin.approve(
-        holder2,
-        amount,
-        fromHolder1,
-      );
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.removeAddressFromWhitelist(holder2, fromRegistrar);
-      await expect(
-        smartCoin.validateApprove(approveHash, fromRegistrar),
-      ).to.be.rejectedWith('Whitelist: address must be whitelisted');
+
+    it('should fail to transferFrom for frozen address(spender)', async function () {
+      const approveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
+
+      await expect(approveTransaction).to.emit(smartCoin, 'Approval');
+
+      await smartCoin
+        .connect(signers.registrar)
+        .freeze([investor2Address]);
+
+      const transferFromTransaction = smartCoin
+        .connect(signers.investor2)
+        .transferFrom(investor1Address, investor3Address, amount);
+
+      await expect(transferFromTransaction)
+        .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+        .withArgs(investor2Address);
     });
-    it('should fail to validate transferFrom for unwhitelisted address(spender)', async function () {
-      let rslt = await smartCoin.approve(holder2, amount, fromHolder1);
-      let index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
 
-      rslt = await smartCoin.transferFrom(holder1, holder3, amount, {
-        from: holder2,
-      });
-
-      index = assertEvent(rslt, 'TransferRequested');
-      const transferHash = rslt.logs[index].args['transferHash'];
-
-      await smartCoin.removeAddressFromWhitelist(holder2, fromRegistrar);
-      await expect(
-        smartCoin.validateTransfer(transferHash, fromRegistrar),
-      ).to.be.rejectedWith('Whitelist: address must be whitelisted');
-    });
     it('should overwrite the amount when called twice(higher amount)', async function () {
       const newApproveAmount = 7;
-      let rslt: Truffle.TransactionResponse<AllEvents> =
-        await smartCoin.approve(holder2, amount, fromHolder1);
-      let index = assertEvent(rslt, 'ApproveRequested');
-      let approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
+      const firstApproveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
 
-      rslt = await smartCoin.approve(holder2, newApproveAmount, fromHolder1);
-      index = assertEvent(rslt, 'ApproveRequested');
-      approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
+      await expect(firstApproveTransaction).to.emit(smartCoin, 'Approval');
 
-      await assertEngagedAmount(smartCoin, holder1);
+      const secondApproveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, newApproveAmount);
+
+      await expect(secondApproveTransaction).to.emit(smartCoin, 'Approval');
+
+      await assertEngagedAmount(smartCoin, investor1Address);
+
       assert.equal(
-        Number(await smartCoin.allowance(holder1, holder2)),
+        Number(await smartCoin.allowance(investor1Address, investor2Address)),
         newApproveAmount,
       );
     });
-    it('should reject the approve and disengage the amount', async function () {
-      const rslt: Truffle.TransactionResponse<any> =
-        await await smartCoin.approve(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.rejectApprove(approveHash, fromRegistrar);
-      assert.equal(
-        Number(await smartCoin.engagedAmount(holder1)),
-        EMPTY_VALUE,
-        'Invalid engagedAmount amount',
-      );
-      await assertEngagedAmount(smartCoin, holder1);
-    });
-    it("should confirm approve and allow recipient to spend owner's amount", async function () {
-      const rslt: Truffle.TransactionResponse<any> =
-        await await smartCoin.approve(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
-      assert.equal(
-        (await smartCoin.allowance(holder1, holder2)).toNumber(),
-        amount,
-        'Invalid allowed amount',
-      );
-      await assertEngagedAmount(smartCoin, holder1);
-    });
-    it('should fail when owner has ongoing approve for same spender', async function () {
-      await smartCoin.approve(holder2, amount, fromHolder1);
-      void expect(
-        smartCoin.approve(holder2, amount, fromHolder1),
-      ).to.be.rejectedWith('SmartCoin: owner has ongoing approve request');
-    });
-    it('should fail when operator is not a registrar', async function () {
-      const rslt = await smartCoin.approve(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      void expect(
-        smartCoin.validateApprove(approveHash, {
-          from: accounts[5],
-        }),
-      ).to.be.rejectedWith(
-        'Whitelist: Only registrar could perform that action',
-      );
-    });
+
     it('should transfer amount from owner to receiver by the spender', async function () {
-      let rslt = await smartCoin.approve(holder2, amount, fromHolder1);
-      let index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
-      assert.equal(
-        (await smartCoin.allowance(holder1, holder2)).toNumber(),
-        amount,
-        'Invalid allowed amount',
-      );
-      rslt = await smartCoin.transferFrom(holder1, holder3, amount, {
-        from: holder2,
-      });
+      const approveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
 
-      index = assertEvent(rslt, 'TransferRequested');
-      assertEventArgs(rslt, index, 'from', holder1);
-      assertEventArgs(rslt, index, 'to', holder3);
-      assertEventArgs(rslt, index, 'spender', holder2);
-      assertEventArgs(rslt, index, 'value', amount);
+      await expect(approveTransaction).to.emit(smartCoin, 'Approval');
 
-      const transferHash = rslt.logs[index].args['transferHash'];
-      await smartCoin.validateTransfer(transferHash, fromRegistrar);
       assert.equal(
-        (await smartCoin.balanceOf(holder3)).toNumber(),
+        (
+          await smartCoin.allowance(investor1Address, investor2Address)
+        ).toNumber(),
         amount,
         'Invalid allowed amount',
       );
-      await assertEngagedAmount(smartCoin, holder1);
-    });
-    it('should reject transferFrom to unwhitelisted address', async function () {
-      const rslt = await smartCoin.approve(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
+
+      await smartCoin
+        .connect(signers.investor2)
+        .transferFrom(investor1Address, investor3Address, amount);
+
       assert.equal(
-        (await smartCoin.allowance(holder1, holder2)).toNumber(),
+        (await smartCoin.balanceOf(investor3Address)).toNumber(),
         amount,
         'Invalid allowed amount',
       );
-      await assertEngagedAmount(smartCoin, holder1);
-      await expect(
-        smartCoin.transferFrom(holder1, unwhitelistedAccount, amount, {
-          from: accounts[4],
-        }),
-      ).to.be.rejectedWith('Whitelist: address must be whitelisted');
+      await assertEngagedAmount(smartCoin, investor1Address);
     });
+
     it('should not update the allowance when the amount is equal to Max (uin256)', async function () {
-      const maxAmount = ethers.constants.MaxUint256.toString();
       const transferAmount = 2;
-      let rslt = await smartCoin.approve(holder2, maxAmount, fromHolder1);
-      let index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
-      let allowance = (await smartCoin.allowance(holder1, holder2)).toString();
-      assert.equal(allowance, maxAmount, 'Invalid allowed amount');
 
-      rslt = await smartCoin.transferFrom(holder1, holder3, transferAmount, {
-        from: holder2,
-      });
-      index = assertEvent(rslt, 'TransferRequested');
-      const transferHash = rslt.logs[index].args['transferHash'];
-      await smartCoin.rejectTransfer(transferHash, fromRegistrar);
-      allowance = (await smartCoin.allowance(holder1, holder2)).toString();
-      assert.equal(allowance, maxAmount, 'Invalid allowed amount');
-    });
-    it('should reject transferFrom with an amount higher than allowance', async function () {
-      const rslt = await smartCoin.approve(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
+      const approveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, MAX_UINT);
+
+      await expect(approveTransaction).to.emit(smartCoin, 'Approval');
+
+      const allowanceAfterFirstApprove = (
+        await smartCoin.allowance(investor1Address, investor2Address)
+      ).toString();
+
       assert.equal(
-        (await smartCoin.allowance(holder1, holder2)).toNumber(),
+        allowanceAfterFirstApprove,
+        MAX_UINT.toString(),
+        'Invalid allowed amount',
+      );
+
+      await smartCoin
+        .connect(signers.investor2)
+        .transferFrom(investor1Address, investor3Address, transferAmount);
+
+      const allowanceAfterRejectedTransferFrom = (
+        await smartCoin.allowance(investor1Address, investor2Address)
+      ).toString();
+
+      assert.equal(
+        allowanceAfterRejectedTransferFrom,
+        MAX_UINT.toString(),
+        'Invalid allowed amount',
+      );
+    });
+
+    it('should reject transferFrom with an amount higher than allowance', async function () {
+      const approveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
+
+      await expect(approveTransaction).to.emit(smartCoin, 'Approval');
+
+      assert.equal(
+        (
+          await smartCoin.allowance(investor1Address, investor2Address)
+        ).toNumber(),
+        amount,
+        'Invalid allowed amount ',
+      );
+
+      await assertEngagedAmount(smartCoin, investor1Address);
+
+      await expect(
+        smartCoin
+          .connect(signers.investor2)
+          .transferFrom(investor1Address, investor3Address, amount + 2),
+      ).to.be.revertedWith('ERC20: insufficient allowance');
+    });
+
+    context('Freeze check for approval', async () => {
+      describe('approve', async () => {
+        it('should not approve from a frozen owner ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor4Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor4)
+              .approve(investor1Address, amount),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor4Address);
+        });
+
+        it('should not approve to a frozen spender ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor4Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .approve(investor4Address, amount),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor4Address);
+        });
+      });
+
+      describe('increase allowance', async () => {
+        it('should not increase allowance from frozen owner ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor4Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor4)
+              .increaseAllowance(investor1Address, amount),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor4Address);
+        });
+
+        it('should not increase allowance to frozen spender ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor4Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .increaseAllowance(investor4Address, amount),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor4Address);
+        });
+
+        it('should not increase allowance to the registrar ', async () => {
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .increaseAllowance(registrarAddress, amount),
+          ).to.be.revertedWithCustomError(smartCoin, `ForbiddenForRegistrar`);
+        });
+
+        it('should not increase allowance to the registrar ', async () => {
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .increaseAllowance(operationsAddress, amount),
+          ).to.be.revertedWithCustomError(smartCoin, `ForbiddenForOperations`);
+        });
+      });
+
+      describe('decrease allowance', async () => {
+        it('should not decrease allowance from frozen owner ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor4Address]);
+
+          await expect(
+            smartCoin
+              .connect(signers.investor4)
+              .decreaseAllowance(investor1Address, amount),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor4Address);
+        });
+
+        it('should not decrease allowance to  frozen spender ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor4Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .decreaseAllowance(investor4Address, amount),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor4Address);
+        });
+      });
+    });
+
+    it('should increase the allowance', async function () {
+      const increateAllowanceAmount = 10;
+      const approveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
+
+      await expect(approveTransaction).to.emit(smartCoin, 'Approval');
+
+      assert.equal(
+        (
+          await smartCoin.allowance(investor1Address, investor2Address)
+        ).toNumber(),
+        amount,
+        'Invalid allowed amount ',
+      );
+      await smartCoin
+        .connect(signers.investor1)
+        .increaseAllowance(investor2Address, increateAllowanceAmount);
+      assert.equal(
+        (
+          await smartCoin.allowance(investor1Address, investor2Address)
+        ).toNumber(),
+        amount + increateAllowanceAmount,
+        'Invalid allowed amount ',
+      );
+    });
+
+    it('should descrease the allowance', async function () {
+      const decreaseAllowanceAmount = 2;
+      const approveTransaction = await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, amount);
+
+      await expect(approveTransaction).to.emit(smartCoin, 'Approval');
+
+      assert.equal(
+        (
+          await smartCoin.allowance(investor1Address, investor2Address)
+        ).toNumber(),
         amount,
         'Invalid allowed amount',
       );
-      await assertEngagedAmount(smartCoin, holder1);
-      await expect(
-        smartCoin.transferFrom(holder1, holder3, amount + 2, {
-          from: holder2,
-        }),
-      ).to.be.rejectedWith('ERC20: insufficient allowance');
+      await smartCoin
+        .connect(signers.investor1)
+        .decreaseAllowance(investor2Address, decreaseAllowanceAmount);
+      assert.equal(
+        (
+          await smartCoin.allowance(investor1Address, investor2Address)
+        ).toNumber(),
+        amount - decreaseAllowanceAmount,
+        'Invalid allowed amount ',
+      );
     });
-    it('should have correct allowance upon rejection of transfer', async function () {
-      // Approve the initial request for allowance
-      const rslt = await smartCoin.approve(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'ApproveRequested');
-      const approveHash = rslt.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
 
-      // Check allowance
-      const allowance = await smartCoin.allowance(holder1, holder2);
-      assert.equal(allowance.toNumber(), amount, 'Invalid allowance amount');
+    it('should fail to tranferFrom when from has insufficient balance due to engaged amount', async () => {
+      await smartCoin
+        .connect(signers.investor1)
+        .approve(investor2Address, mintingAmount);
 
-      const result2 = await smartCoin.transferFrom(holder1, holder3, 2, fromHolder2);
-      const index2 = assertEvent(result2, 'TransferRequested');
-      const transferHash = result2.logs[index2].args['transferHash'];
+      await smartCoin
+        .connect(signers.investor1)
+        .transfer(registrarAddress, Math.floor(mintingAmount / 2));
 
-      await smartCoin.rejectTransfer(transferHash, fromRegistrar);
+      const transferFromTransaction = smartCoin
+        .connect(signers.investor2)
+        .transferFrom(investor1Address, investor3Address, mintingAmount);
 
-      // Check allowance
-      const newAllowance = await smartCoin.allowance(holder1, holder2);
-      assert.equal(newAllowance.toNumber(), amount, 'Failed to rollback allowance amount');
-    });
-    it('should not cause an overflow in reject transfer', async function () {
-      // Approve the initial request for allowance
-      const result = await smartCoin.approve(holder2, ethers.constants.MaxUint256.sub(1).toString(), fromHolder1);
-      const index = assertEvent(result, 'ApproveRequested');
-      const approveHash = result.logs[index].args['approveHash'];
-      await smartCoin.validateApprove(approveHash, fromRegistrar);
-
-      const result2 = await smartCoin.transferFrom(holder1, holder3, 2, fromHolder2);
-      const index2 = assertEvent(result2, 'TransferRequested');
-      const transferHash = result2.logs[index2].args['transferHash'];
-
-      const result3 = await smartCoin.rejectTransfer(transferHash, fromRegistrar);
-
-      assertEvent(result3, 'TransferRejected');
+      await expect(transferFromTransaction).to.be.revertedWithCustomError(
+        smartCoin,
+        'InsufficientBalance',
+      );
     });
   });
 });

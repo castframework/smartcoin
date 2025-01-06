@@ -1,24 +1,17 @@
-// assert if "eventName" is in transaction log ; return event index if found, -1 otherwise
-export function assertEvent(
-  response: Truffle.TransactionResponse<Truffle.AnyEvent>,
+export function getEventArgsInReceipt(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types
+  receipt: any,
   eventName: string,
-): number {
-  const eventIndex = response.logs.findIndex((log) => log.event === eventName);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any {
+  const event = receipt.events.find((event) => event.event === eventName);
 
-  assert.isTrue(eventIndex !== -1, `${eventName} event should fire`);
+  if (event === undefined) {
+    throw Error(`Event [${eventName}] not found in receipt`);
+  }
 
-  return eventIndex;
+  return event.args;
 }
 
-export function assertEventArgs(
-  response: Truffle.TransactionResponse<Truffle.AnyEvent>,
-  eventIndex: number,
-  argName: string,
-  expectedValue: unknown,
-): void {
-  assert.equal(
-    response.logs[eventIndex].args[argName],
-    expectedValue,
-    `${argName} expected to be equal to ${expectedValue}`,
-  );
-}
+export const anyNonEmptyString = (val: unknown): boolean =>
+  typeof val === 'string' && val.length !== 0;

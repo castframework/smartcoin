@@ -17,28 +17,20 @@
     "rootDir": "src",
     "baseUrl": ".",
     "resolveJsonModule": true,
-    "typeRoots": [
-      "node_modules/@types",
-      "dist/types"
-    ],
-    "types": [
-      "node",
-      "mocha",
-      "chai",
-      "truffle-typings"
-    ],
     "strictNullChecks": true,
     "preserveSymlinks": true,
     "skipLibCheck": true
   },
   "include": [
-    "**/*.ts"
+    "**/*.ts", 
+    "**/*.ts.snap"
   ],
   "exclude": [
     "node_modules",
     "contracts",
     "build",
     "migrations",
-    "test"
+    "test",
+    "hardhat.config.ts"
   ]
 }

@@ -1,129 +1,159 @@
-import { assertEvent, assertEventArgs } from '../utils/events';
-import chai, { assert, expect } from 'chai';
-import chaiAsPromised from 'chai-as-promised';
-import { SmartCoinInstance } from '../../../dist/types';
-import { AllEvents } from '../../../dist/types/SmartCoin';
-import { ethers } from 'ethers';
+import { SmartCoin } from '../../../dist/types';
+import { expect, assert } from 'chai';
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
+import { deploySmartCoinFixture } from '../utils/builders';
+import { getOperatorSigners } from '../utils/signers';
+import { Signer } from 'ethers';
+import { ZERO_ADDRESS } from '../utils/contants';
 
-// registrar actions for the ongoing transfers
+const amountToMint = 10;
 
-const SmartCoint = artifacts.require('SmartCoin');
-const amount = 5;
+context('SmartCoin', () => {
+  let smartCoin: SmartCoin;
+  let signers: {
+    registrar: Signer;
+    issuer: Signer;
+    investor4: Signer;
+    investor1: Signer;
+    investor2: Signer;
+    investor3: Signer;
+    settler: Signer;
+    operations: Signer;
+    technical: Signer;
+  };
 
-chai.use(chaiAsPromised);
-contract('SmartCoin', (accounts) => {
-  let smartCoin: SmartCoinInstance;
+  let registrarAddress: string;
+  let investor1Address: string;
+  let investor2Address: string;
+  let investor3Address: string;
 
-  const registrar = accounts[1];
-  const holder1 = accounts[2];
-  const holder2 = accounts[3];
+  context('SmartCoin: Transfer', async function () {
+    beforeEach(async () => {
+      smartCoin = await loadFixture(deploySmartCoinFixture);
 
-  const amountToMint = 10;
-  const fromRegistrar = { from: registrar };
-  const fromHolder1 = { from: holder1 };
+      signers = await getOperatorSigners();
 
-  context('Transfer adapter', async function () {
-    beforeEach(async function () {
-      smartCoin = await SmartCoint.new(registrar);
-      await smartCoin.addAddressToWhitelist(holder1, { from: registrar });
-      await smartCoin.mint(holder1, amountToMint, { from: registrar });
-      await smartCoin.addAddressToWhitelist(holder2, { from: registrar });
+      registrarAddress = await signers.registrar.getAddress();
+      investor1Address = await signers.investor1.getAddress();
+      investor2Address = await signers.investor2.getAddress();
+
+      investor3Address = await signers.investor3.getAddress();
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, amountToMint);
     });
-    // testing ERC20 adpater
-    it('should initiate the transfer successfully', async function () {
-      const rslt: Truffle.TransactionResponse<AllEvents> =
-        await smartCoin.transfer(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'TransferRequested');
-      assertEventArgs(rslt, index, 'from', holder1);
-      assertEventArgs(rslt, index, 'to', holder2);
-      assertEventArgs(rslt, index, 'spender', ethers.constants.AddressZero);
-      assertEventArgs(rslt, index, 'value', amount);
-    });
-    it('should engage an amount after transfer initiation', async function () {
-      await smartCoin.transfer(holder2, amount, fromHolder1);
-      assert.equal(
-        Number(await smartCoin.balanceOf(holder1)),
-        amountToMint - amount,
-      );
-      assert.equal(Number(await smartCoin.engagedAmount(holder1)), amount);
-    });
-    it('should reject transfer when amount is higher than (balance - engaged amount)', async function () {
-      await smartCoin.transfer(holder2, amount, fromHolder1);
-      assert.equal(
-        Number(await smartCoin.balanceOf(holder1)),
-        amountToMint - amount,
-      );
+
+    it('should revert transfer to zero address', async () => {
       await expect(
-        smartCoin.transfer(holder2, amountToMint, fromHolder1),
-      ).to.be.rejectedWith('SmartCoin: Insufficient balance');
+        smartCoin
+          .connect(signers.investor1)
+          .transfer(ZERO_ADDRESS, amountToMint),
+      ).to.be.revertedWith('ERC20: transfer to the zero address');
     });
-    it('should reject the transfer and unlock the amount', async function () {
-      let rslt: Truffle.TransactionResponse<AllEvents> =
-        await smartCoin.transfer(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'TransferRequested');
-      const transferHash = rslt.logs[index].args['transferHash'];
 
-      let engagedAmountAmount = await smartCoin.engagedAmount(holder1);
-      assert.equal(Number(engagedAmountAmount), amount);
-      rslt = await smartCoin.rejectTransfer(transferHash, fromRegistrar);
-      engagedAmountAmount = await smartCoin.engagedAmount(holder1);
+    it('should directly update the balances (non cash out transfer)', async () => {
+      const transferAmount = 3;
 
-      assertEvent(rslt, 'TransferRejected');
-      assert.equal(Number(engagedAmountAmount), 0);
-    });
-    it('should confirm the transfer and send amount to recipient', async function () {
-      let rslt: Truffle.TransactionResponse<AllEvents> =
-        await smartCoin.transfer(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'TransferRequested');
-      const transferHash = rslt.logs[index].args['transferHash'];
+      const investor1BalanceBefore = await smartCoin.callStatic.balanceOf(
+        investor1Address,
+      );
+      const investor2BalanceBefore = await smartCoin.callStatic.balanceOf(
+        investor2Address,
+      );
 
-      let engagedAmountAmount = await smartCoin.engagedAmount(holder1);
-      assert.equal(Number(engagedAmountAmount), amount);
-      rslt = await smartCoin.validateTransfer(transferHash, fromRegistrar);
-      engagedAmountAmount = await smartCoin.engagedAmount(holder1);
+      await smartCoin
+        .connect(signers.investor1)
+        .transfer(investor2Address, transferAmount);
 
-      assertEvent(rslt, 'TransferValidated');
-      assertEvent(rslt, 'Transfer');
-      assert.equal(Number(engagedAmountAmount), 0);
-      assert.equal(Number(await smartCoin.balanceOf(holder2)), amount);
-      assert.equal(
-        Number(await smartCoin.balanceOf(holder1)),
-        amountToMint - amount,
+      const investor1BalanceAfter = await smartCoin.callStatic.balanceOf(
+        investor1Address,
+      );
+      const investor2BalanceAfter = await smartCoin.callStatic.balanceOf(
+        investor2Address,
+      );
+
+      expect(investor1BalanceAfter).to.be.eql(
+        investor1BalanceBefore.sub(transferAmount),
+      );
+      expect(investor2BalanceAfter).to.be.eql(
+        investor2BalanceBefore.add(transferAmount),
       );
     });
-    it('should fail to validate transfer for unwhitelisted address(from)', async function () {
-      const rslt: Truffle.TransactionResponse<AllEvents> =
-        await smartCoin.transfer(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'TransferRequested');
-      const transferHash = rslt.logs[index].args['transferHash'];
 
-      await smartCoin.removeAddressFromWhitelist(holder1, fromRegistrar);
-      await expect(
-        smartCoin.validateTransfer(transferHash, fromRegistrar),
-      ).to.be.rejectedWith('Whitelist: address must be whitelisted');
+    it('should emit a transfer event', async () => {
+      const transferAmount = 3;
+      const transferTransaction = await smartCoin
+        .connect(signers.investor1)
+        .transfer(investor2Address, transferAmount);
+      await expect(transferTransaction)
+        .to.emit(smartCoin, 'Transfer')
+        .withArgs(investor1Address, investor2Address, transferAmount);
     });
-    it('should fail to validate transfer for unwhitelisted address(to)', async function () {
-      const rslt: Truffle.TransactionResponse<AllEvents> =
-        await smartCoin.transfer(holder2, amount, fromHolder1);
-      const index = assertEvent(rslt, 'TransferRequested');
-      const transferHash = rslt.logs[index].args['transferHash'];
-      await smartCoin.removeAddressFromWhitelist(holder2, fromRegistrar);
-      await expect(
-        smartCoin.validateTransfer(transferHash, fromRegistrar),
-      ).to.be.rejectedWith('Whitelist: address must be whitelisted');
-    });
-    it('should fail when operator is not authorised', async function () {
-      const rslt: Truffle.TransactionResponse<AllEvents> =
-        await smartCoin.transfer(holder1, amount, fromHolder1);
-      const index = assertEvent(rslt, 'TransferRequested');
-      const transferHash = rslt.logs[index].args['transferHash'];
-      await expect(
-        smartCoin.validateTransfer(transferHash, {
-          from: accounts[5],
-        }),
-      ).to.be.rejectedWith(
-        'Whitelist: Only registrar could perform that action',
+
+    it('should fail to tranfer when from has insufficient balance due to engaged amount', async () => {
+
+      await smartCoin
+        .connect(signers.investor1)
+        .transfer(registrarAddress, Math.floor(amountToMint / 2));
+
+      const transferFromTransaction = smartCoin
+        .connect(signers.investor1)
+        .transfer(investor2Address, amountToMint);
+
+      await expect(transferFromTransaction).to.be.revertedWithCustomError(
+        smartCoin,
+        'InsufficientBalance',
       );
+    });
+
+    context('Blacklisting check for transfers', async () => {
+      describe('transfer', async () => {
+        it('should not transfer from frozen owner ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor3Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor3)
+              .transfer(investor1Address, amountToMint),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor3Address);
+        });
+
+        it('should not transfer to a frozen address ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor3Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .transfer(investor3Address, amountToMint),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor3Address);
+        });
+      });
+      describe('transfer from', async () => {
+        it('should not transfer from frozen owner ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor3Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .transferFrom(investor3Address, investor2Address, amountToMint),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor3Address);
+        });
+
+        it('should not authorize transfer to frozen receiver ', async () => {
+          await smartCoin.connect(signers.registrar).freeze([investor3Address]);
+          await expect(
+            smartCoin
+              .connect(signers.investor1)
+              .transferFrom(investor1Address, investor3Address, amountToMint),
+          )
+            .to.be.revertedWithCustomError(smartCoin, `Unauthorized`)
+            .withArgs(investor3Address);
+        });
+      });
     });
   });
 });

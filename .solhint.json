@@ -5,7 +5,9 @@
     "avoid-throw": "off",
     "avoid-suicide": "error",
     "avoid-sha3": "warn",
-    "compiler-version": ["error", "0.8.17"]
+    "ordering": "error",
+    "compiler-version": ["error", "0.8.17"],
+    "func-visibility": ["warn",{"ignoreConstructors":true}]
   },
   "plugins": ["prettier"]
 }

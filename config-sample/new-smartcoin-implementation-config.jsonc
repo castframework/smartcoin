@@ -1,0 +1,13 @@
+//export NEW_SMARTCOIN_IMPLEMENTATION_JSON_CONFIG='
+{
+    "NewOperatorsAddress":{
+        "Registrar": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+        "Operation": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+        "Technical": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c"
+    },
+    "Contracts":{
+        "ImplementationArtifactName": "SmartCoin"
+    },
+    "OutputFolder": "dist/"
+}
+//'

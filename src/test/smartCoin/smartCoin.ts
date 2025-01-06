@@ -1,100 +1,268 @@
-import { AllEvents, SmartCoinInstance } from '../../../dist/types/SmartCoin';
-import { assertEvent, assertEventArgs } from '../utils/events';
-import chai, { expect } from 'chai';
-import chaiAsPromised from 'chai-as-promised';
+import { SmartCoin } from '../../../dist/types';
+import { expect, assert } from 'chai';
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
+import { deploySmartCoinFixture } from '../utils/builders';
+import { getOperatorSigners } from '../utils/signers';
+import { Signer } from 'ethers';
+import { TOKEN_NAME, TOKEN_SYMBOL } from '../utils/contants';
+import { ethers } from 'hardhat';
+import "@nomicfoundation/hardhat-chai-matchers"; //Added for revertWithCustomErrors
 
-const SmartCoint = artifacts.require('SmartCoin');
-const ZER_ADDRESS = '0x0000000000000000000000000000000000000000';
-chai.use(chaiAsPromised);
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-contract('SmartCoin', (accounts) => {
-  let smartCoin: SmartCoinInstance;
-  const registrar = accounts[1];
-  const holder1 = accounts[2];
-  const holder2 = accounts[3];
-  context('Balance Administration', async function () {
+context('SmartCoin', () => {
+  let smartCoin: SmartCoin;
+  const mintingAmount = 1000;
+  let signers: {
+    registrar: Signer;
+    issuer: Signer;
+    investor4: Signer;
+    investor1: Signer;
+    investor2: Signer;
+    investor3: Signer;
+    settler: Signer;
+  };
+
+  let registrarAddress: string;
+  let investor1Address: string;
+  let investor2Address: string;
+
+  context('SmartCoin: Balance Administration', async function () {
     beforeEach(async () => {
-      smartCoin = await SmartCoint.new(registrar);
+      smartCoin = await loadFixture(deploySmartCoinFixture);
+      signers = await getOperatorSigners();
+
+      registrarAddress = await signers.registrar.getAddress();
+      investor1Address = await signers.investor1.getAddress();
+      investor2Address = await signers.investor2.getAddress();
     });
-    it('should match the initial registrar', async () => {
-      const rslt = await smartCoin.registrar();
-      assert(rslt, registrar);
+    context('Operators zero address & consistency check ', () => {
+      let SmartCoinFactory;
+      beforeEach(async () => {
+        SmartCoinFactory = await ethers.getContractFactory('SmartCoin');
+      });
+      it('should not deploy with zero address operations', async () => {
+        const newSmartCoin = SmartCoinFactory.deploy(
+          registrarAddress,
+          ZERO_ADDRESS,
+          investor1Address,
+        );
+        expect(newSmartCoin).to.be.revertedWithCustomError(
+          smartCoin,
+          'ZeroAddressCheck',
+        );
+      });
+      it('should not deploy with zero address registrar', async () => {
+        const newSmartCoin = SmartCoinFactory.deploy(
+          ZERO_ADDRESS,
+          investor2Address,
+          investor1Address,
+        );
+        expect(newSmartCoin).to.be.revertedWithCustomError(
+          smartCoin,
+          'ZeroAddressCheck',
+        );
+      });
+      it('should not deploy with zero address technical', async () => {
+        const newSmartCoin = SmartCoinFactory.deploy(
+          investor1Address,
+          investor2Address,
+          ZERO_ADDRESS,
+        );
+        expect(newSmartCoin).to.be.revertedWithCustomError(
+          smartCoin,
+          'ZeroAddressCheck',
+        );
+
+        it('should not deploy when operations and registrar have same address', async () => {
+          const newSmartCoin = SmartCoinFactory.deploy(
+            investor1Address,
+            investor1Address,
+            investor2Address,
+          );
+          expect(newSmartCoin).to.be.revertedWithCustomError(
+            smartCoin,
+            'InconsistentOperators',
+          );
+        });
+        it('should not deploy when operations and technical have same address', async () => {
+          const newSmartCoin = SmartCoinFactory.deploy(
+            investor2Address,
+            investor1Address,
+            investor1Address,
+          );
+          expect(newSmartCoin).to.be.revertedWithCustomError(
+            smartCoin,
+            'InconsistentOperators',
+          );
+        });
+        it('should not deploy when registrar and technical have same address', async () => {
+          const newSmartCoin = SmartCoinFactory.deploy(
+            investor1Address,
+            investor2Address,
+            investor1Address,
+          );
+          expect(newSmartCoin).to.be.revertedWithCustomError(
+            smartCoin,
+            'InconsistentOperators',
+          );
+        });
+      });
     });
-    it('should mint tokens to whitelisted address', async () => {
-      const amountToMint = 10;
-      await smartCoin.addAddressToWhitelist(holder1, { from: registrar });
-      const rslt: Truffle.TransactionResponse<AllEvents> = await smartCoin.mint(
-        holder1,
-        amountToMint,
-        {
-          from: registrar,
-        },
+    it('should mint tokens to unfrozen address', async () => {
+
+      const mintTransaction = await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
+      await expect(mintTransaction)
+        .to.emit(smartCoin, 'Transfer')
+        .withArgs(ZERO_ADDRESS, investor1Address, mintingAmount);
+
+      await expect(await smartCoin.balanceOf(investor1Address)).to.be.eq(
+        mintingAmount,
       );
-      const index = assertEvent(rslt, 'Transfer');
-      assertEventArgs(rslt, index, 'from', ZER_ADDRESS);
-      assertEventArgs(rslt, index, 'to', holder1);
-      assertEventArgs(rslt, index, 'value', amountToMint);
-      expect((await smartCoin.balanceOf(holder1)).toString()).to.be.eq(
-        amountToMint.toString(),
-      );
     });
-    it('should fail to mint to unwhitelisted address', async () => {
-      const amountToMint = 10;
-      void expect(smartCoin.mint(holder1, amountToMint, { from: registrar })).to
-        .be.rejected;
+
+    it('should fail to mint to frozen address', async () => {
+      await smartCoin.connect(signers.registrar).freeze([investor1Address]);
+      await expect(
+        smartCoin.connect(signers.registrar).mint(investor1Address, 10),
+      ).to.be.reverted;
     });
+
+    it("should match the token's symbol", async () => {
+      await expect(await smartCoin.symbol()).to.be.eq(TOKEN_SYMBOL);
+    });
+    it("should match the token's name", async () => {
+      await expect(await smartCoin.name()).to.be.eq(TOKEN_NAME);
+    });
+
     it('should burn tokens from registrar account', async () => {
-      const amountToMint = 10;
-      await smartCoin.addAddressToWhitelist(registrar, { from: registrar });
-      await smartCoin.mint(registrar, amountToMint, { from: registrar });
-      const rslt: Truffle.TransactionResponse<AllEvents> = await smartCoin.burn(
-        amountToMint,
-        { from: registrar },
-      );
-      const index = assertEvent(rslt, 'Transfer');
-      assertEventArgs(rslt, index, 'from', registrar);
-      assertEventArgs(rslt, index, 'to', ZER_ADDRESS);
-      assertEventArgs(rslt, index, 'value', amountToMint);
-      expect((await smartCoin.balanceOf(registrar)).toString()).to.be.eq('0');
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(registrarAddress, mintingAmount);
+
+      const burnTransaction = await smartCoin
+        .connect(signers.registrar)
+        .burn(mintingAmount);
+
+      await expect(burnTransaction)
+        .to.emit(smartCoin, 'Transfer')
+        .withArgs(registrarAddress, ZERO_ADDRESS, mintingAmount);
+
+      await expect(
+        (await smartCoin.balanceOf(registrarAddress)).toString(),
+      ).to.be.eq('0');
     });
+
     it('should match the total supply', async () => {
-      const amountToMint = 1000;
-      await smartCoin.addAddressToWhitelist(holder1, { from: registrar });
-      await smartCoin.addAddressToWhitelist(holder2, { from: registrar });
-      await smartCoin.mint(holder1, amountToMint, { from: registrar });
-      await smartCoin.mint(holder2, amountToMint, { from: registrar });
-      expect((await smartCoin.totalSupply()).toNumber()).to.be.eq(
-        amountToMint * 2,
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor2Address, mintingAmount);
+
+      await expect((await smartCoin.totalSupply()).toNumber()).to.be.eq(
+        mintingAmount * 2,
       );
     });
-    it('only registrar could perform a mint', async () => {
-      const amountToMint = 1000;
-      await smartCoin.addAddressToWhitelist(holder1, { from: registrar });
+
+    it('should fail with only registrar could perform a mint', async () => {
       await expect(
-        smartCoin.mint(holder1, amountToMint, { from: holder2 }),
-      ).to.be.rejectedWith(
-        'Whitelist: Only registrar could perform that action',
+        smartCoin.connect(signers.investor2).mint(investor1Address, 1000),
+      ).to.be.revertedWithCustomError(smartCoin, `UnauthorizedRegistrar`);
+    });
+
+    it('should fail with only registrar could perform a wipeFrozenAddress', async () => {
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
+      await expect(
+        smartCoin
+          .connect(signers.investor2)
+          .wipeFrozenAddress(investor1Address),
+      ).to.be.revertedWithCustomError(smartCoin, `UnauthorizedRegistrar`);
+    });
+    it('should fail to wipe from not frozen address', async () => {
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
+      await expect(
+        smartCoin
+          .connect(signers.registrar)
+          .wipeFrozenAddress(investor1Address),
+      ).to.be.revertedWithCustomError(smartCoin, `AddressNotFrozen`).withArgs(investor1Address);
+    });
+    it('should  wipe from  frozen address', async () => {
+      
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
+      await smartCoin.connect(signers.registrar).freeze([investor1Address]);
+
+      const wipeTransaction = await smartCoin.connect(signers.registrar).wipeFrozenAddress(investor1Address);
+
+
+      await expect(wipeTransaction)
+      .to.emit(smartCoin, 'Transfer').withArgs(investor1Address, ZERO_ADDRESS, mintingAmount);
+
+      assert((await smartCoin.callStatic.balanceOf(investor1Address)).toString(), '0')
+
+    });
+    it('should wipeFrozenAddress from an investor', async () => {
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
+      await smartCoin
+        .connect(signers.registrar)
+        .freeze([investor1Address]);
+
+      await smartCoin
+        .connect(signers.registrar)
+        .wipeFrozenAddress(investor1Address);
+      assert.equal(
+        (await smartCoin.balanceOf(registrarAddress)).toNumber(),
+        0,
+        'Invalid allowed amount ',
       );
     });
-    it('only registrar could perform a recall', async () => {
-      const amountToMint = 1000;
-      await smartCoin.addAddressToWhitelist(holder1, { from: registrar });
-      await smartCoin.mint(holder1, amountToMint, { from: registrar });
+
+    it('should fail with only registrar could perform a burn', async () => {
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
       await expect(
-        smartCoin.recall(holder1, amountToMint, { from: holder2 }),
-      ).to.be.rejectedWith(
-        'Whitelist: Only registrar could perform that action',
-      );
+        smartCoin.connect(signers.investor2).burn(mintingAmount),
+      ).to.be.revertedWithCustomError(smartCoin, `UnauthorizedRegistrar`);
     });
-    it('only registrar could perform a burn', async () => {
-      const amountToMint = 1000;
-      await smartCoin.addAddressToWhitelist(holder1, { from: registrar });
-      await smartCoin.mint(holder1, amountToMint, { from: registrar });
-      await expect(
-        smartCoin.burn(amountToMint, { from: holder2 }),
-      ).to.be.rejectedWith(
-        'Whitelist: Only registrar could perform that action',
-      );
+
+    it('should not burn amount higher than current balance', async () => {
+      const higherAmount = mintingAmount + 10;
+
+      await smartCoin
+        .connect(signers.registrar)
+        .mint(investor1Address, mintingAmount);
+
+      const currentBalance = (
+        await smartCoin.balanceOf(registrarAddress)
+      ).toNumber();
+
+      await expect(smartCoin.connect(signers.registrar).burn(higherAmount))
+        .to.be.revertedWithCustomError(smartCoin, `InsufficientBalance`)
+        .withArgs(currentBalance, higherAmount);
     });
   });
 });

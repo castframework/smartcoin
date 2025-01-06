@@ -1,0 +1,157 @@
+exports["SmartCoin - Data Layout should not change layout"] = [
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_transfers",
+		"offset": 0,
+		"slot": "0",
+		"type": "t_mapping(t_bytes32,t_struct(TransferRequest)3570_storage)"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_requestCounter",
+		"offset": 0,
+		"slot": "1",
+		"type": "t_uint256"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_engagedAmount",
+		"offset": 0,
+		"slot": "2",
+		"type": "t_mapping(t_address,t_uint256)"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "__gap",
+		"offset": 0,
+		"slot": "3",
+		"type": "t_array(t_uint256)50_storage"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "whitelist",
+		"offset": 0,
+		"slot": "53",
+		"type": "t_mapping(t_address,t_bool)"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "newRegistrar",
+		"offset": 0,
+		"slot": "54",
+		"type": "t_address"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "newOperations",
+		"offset": 0,
+		"slot": "55",
+		"type": "t_address"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "newTechnical",
+		"offset": 0,
+		"slot": "56",
+		"type": "t_address"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "hasAcceptedRole",
+		"offset": 0,
+		"slot": "57",
+		"type": "t_mapping(t_address,t_bool)"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "isImplementationAuthorized",
+		"offset": 0,
+		"slot": "58",
+		"type": "t_mapping(t_address,t_bool)"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "__gap",
+		"offset": 0,
+		"slot": "59",
+		"type": "t_array(t_uint256)30_storage"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_initialized",
+		"offset": 0,
+		"slot": "89",
+		"type": "t_uint8"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_initializing",
+		"offset": 1,
+		"slot": "89",
+		"type": "t_bool"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "__gap",
+		"offset": 0,
+		"slot": "90",
+		"type": "t_array(t_uint256)50_storage"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_balances",
+		"offset": 0,
+		"slot": "140",
+		"type": "t_mapping(t_address,t_uint256)"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_allowances",
+		"offset": 0,
+		"slot": "141",
+		"type": "t_mapping(t_address,t_mapping(t_address,t_uint256))"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_totalSupply",
+		"offset": 0,
+		"slot": "142",
+		"type": "t_uint256"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_name",
+		"offset": 0,
+		"slot": "143",
+		"type": "t_string_storage"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "_symbol",
+		"offset": 0,
+		"slot": "144",
+		"type": "t_string_storage"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "__gap",
+		"offset": 0,
+		"slot": "145",
+		"type": "t_array(t_uint256)45_storage"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "__gap",
+		"offset": 0,
+		"slot": "190",
+		"type": "t_array(t_uint256)50_storage"
+	},
+	{
+		"contract": "contracts/smartCoin/SmartCoin.sol:SmartCoin",
+		"label": "__gap",
+		"offset": 0,
+		"slot": "240",
+		"type": "t_array(t_uint256)50_storage"
+	}
+];
+
